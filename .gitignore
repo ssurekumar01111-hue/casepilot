@@ -1,0 +1,12 @@
+.env
+venv/
+pycache/
+*.pyc
+*.pyo
+*.pyd
+corpus/raw/
+*.pdf
+*.log
+.DS_Store
+dist/
+build/
