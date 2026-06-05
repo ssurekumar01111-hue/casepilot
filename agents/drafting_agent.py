@@ -1,163 +1,70 @@
-from pymongo import MongoClient
+"""
+CasePilot — Multi-Document Drafting Agent
+Generates all required documents based on dispute type
+"""
+
+import os
 from google import genai
 from google.genai import types
-from rich.console import Console
+from agents.document_templates import DISPUTE_DOCUMENTS, DOCUMENT_PROMPTS
 from datetime import datetime
-import os, json
-from dotenv import load_dotenv
 
-load_dotenv()
-console = Console()
-
-MONGODB_URI = os.getenv("MONGODB_URI")
-MONGODB_DB = os.getenv("MONGODB_DB", "casepilot")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
-mongo_client = MongoClient(MONGODB_URI)
-db = mongo_client[MONGODB_DB]
-cases_col = db["cases"]
-docs_col = db["documents"]
-genai_client = genai.Client(api_key=GOOGLE_API_KEY)
 
-LEGAL_NOTICE_PROMPT = """You are a senior Indian advocate drafting a formal legal notice.
+def run_drafting_agent(case_facts: dict, law_research: dict, strategy: dict) -> list[dict]:
+    """
+    Generate all required documents for the dispute type.
+    Returns list of generated documents.
+    """
+    genai_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+    
+    dispute_type = case_facts.get("dispute_type", "default")
+    doc_types = DISPUTE_DOCUMENTS.get(dispute_type, DISPUTE_DOCUMENTS["default"])
+    
+    # Build context from case facts
+    case_context = f"""
+CASE FACTS:
+- Dispute Type: {dispute_type}
+- Summary: {case_facts.get('summary', '')}
+- Key Facts: {case_facts.get('facts', {})}
+- Evidence Available: {case_facts.get('evidence_summary', 'None uploaded')}
 
-Draft a complete, professional legal notice in English based on these case facts.
-The notice must:
-- Have proper heading: LEGAL NOTICE
-- Include To: address block
-- Include Date
-- Include Subject line with relevant act sections
-- Have numbered paragraphs stating facts clearly
-- State the specific relief demanded
-- Give a 15-day compliance deadline
-- End with consequences of non-compliance
-- Include a note to send via registered post
+APPLICABLE LAWS:
+{chr(10).join([f"- {law['act']} {law.get('section_number', '')}: {law.get('relevance', '')}" 
+               for law in law_research.get('laws_found', [])])}
 
-Case facts:
-Summary: {summary}
-Complainant: {complainant}
-Opponent type: {opponent_type}
-Amount involved: Rs. {amount}
-Key facts: {key_facts}
-Violations: {violations}
-Relevant acts: {acts}
+RECOMMENDED STRATEGY:
+{strategy.get('recommended_path', '')}
+"""
+    
+    generated_documents = []
+    
+    for doc_type in doc_types:
+        prompt = DOCUMENT_PROMPTS.get(doc_type, DOCUMENT_PROMPTS["legal_notice"])
+        
+        full_prompt = f"""You are CasePilot's expert legal document drafter.
 
-Respond with ONLY the legal notice text. No JSON, no explanation."""
+{case_context}
 
-RTI_PROMPT = """You are drafting an RTI application under the Right to Information Act 2005.
+TASK: {prompt}
 
-Draft a complete RTI application based on:
-Subject: {summary}
-Applicant state: {state}
-Key facts: {key_facts}
+Generate the complete document now. Use [PLACEHOLDER] for information not available in the case facts.
+Do not add any preamble or explanation — output only the document itself."""
 
-The application must include:
-- Proper header: APPLICATION UNDER SECTION 6(1) OF THE RTI ACT 2005
-- To: The Public Information Officer block (leave department blank with [DEPARTMENT])
-- Date
-- Subject line
-- Numbered information requests (specific, clear)
-- Fee note: Rs. 10 enclosed
-- Applicant signature block
-
-Respond with ONLY the RTI application text. No JSON, no explanation."""
-
-CONSUMER_COMPLAINT_PROMPT = """You are drafting a consumer complaint for the District Consumer Disputes Redressal Commission.
-
-Draft a complete consumer complaint based on:
-Summary: {summary}
-Amount: Rs. {amount}
-Key facts: {key_facts}
-Violations: {violations}
-
-The complaint must include:
-- Proper heading with commission name
-- Complainant and Opposite Party details
-- Numbered facts of the case
-- Legal grounds (Consumer Protection Act 2019 sections)
-- Relief sought (refund + compensation + litigation costs)
-- Verification declaration
-
-Respond with ONLY the complaint text. No JSON, no explanation."""
-
-
-def generate_document(case_doc: dict, doc_type: str) -> str:
-    summary = case_doc.get("summary", "")
-    key_facts = json.dumps(case_doc.get("key_facts", {}))
-    violations = json.dumps(case_doc.get("law_analysis", {}).get("violations", []))
-    amount = case_doc.get("amount_involved", 0)
-    acts = ", ".join(case_doc.get("relevant_acts", []))
-
-    if doc_type == "legal_notice":
-        prompt = LEGAL_NOTICE_PROMPT.format(
-            summary=summary,
-            complainant=f"User {case_doc.get('user_id','')} ({case_doc.get('complainant_state','India')})",
-            opponent_type=case_doc.get("opponent_type", "opponent"),
-            amount=amount,
-            key_facts=key_facts,
-            violations=violations,
-            acts=acts
+        response = genai_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=full_prompt
         )
-    elif doc_type == "rti_application":
-        prompt = RTI_PROMPT.format(
-            summary=summary,
-            state=case_doc.get("complainant_state", "India"),
-            key_facts=key_facts
-        )
-    elif doc_type == "consumer_complaint":
-        prompt = CONSUMER_COMPLAINT_PROMPT.format(
-            summary=summary,
-            amount=amount,
-            key_facts=key_facts,
-            violations=violations
-        )
-    else:
-        return f"Document type '{doc_type}' not yet implemented."
-
-    response = genai_client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(temperature=0.3)
-    )
-    return response.text.strip()
-
-
-def run_drafting(case_doc: dict) -> dict:
-    console.print("\n[bold cyan]Agent 4 — Drafting[/bold cyan]")
-
-    timeline = case_doc.get("action_timeline", [])
-    docs_needed = [
-        step["document_needed"]
-        for step in timeline
-        if step.get("document_needed") and step["document_needed"] != "none"
-    ]
-
-    if not docs_needed:
-        docs_needed = ["legal_notice"]
-
-    generated = []
-    for doc_type in docs_needed[:2]:
-        console.print(f"   Generating: {doc_type}...")
-        content = generate_document(case_doc, doc_type)
-
-        doc_record = {
-            "doc_id": f"DOC-{case_doc['case_id']}-{doc_type}",
-            "case_id": case_doc["case_id"],
+        
+        content = response.text.strip()
+        
+        generated_documents.append({
             "doc_type": doc_type,
+            "doc_title": doc_type.replace("_", " ").title(),
             "content": content,
-            "generated_at": datetime.utcnow(),
-            "status": "DRAFT",
-            "sent": False
-        }
-        docs_col.insert_one(doc_record)
-        generated.append(doc_record)
-        console.print(f"[green]   ✅ {doc_type} generated ({len(content)} chars)[/green]")
-
-    cases_col.update_one(
-        {"case_id": case_doc["case_id"]},
-        {"$set": {"generated_documents": [d["doc_id"] for d in generated]}}
-    )
-
-    case_doc["generated_docs"] = generated
-    return case_doc
+            "length": len(content),
+            "generated_at": datetime.utcnow().isoformat()
+        })
+    
+    return generated_documents

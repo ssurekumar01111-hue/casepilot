@@ -5,16 +5,23 @@ from agents.law_research_agent import run_law_research
 from agents.evidence_agent import run_evidence
 from agents.strategy_agent import run_strategy
 from agents.citation_agent import run_citation
-from agents.drafting_agent import run_drafting
+from agents.drafting_agent import run_drafting_agent
 from agents.memory_agent import run_memory, resume_session
 from agents.mcp_law_research_agent import create_mcp_law_research_agent
 from agents.mcp_memory_agent import create_mcp_memory_agent
 from rich.console import Console
 from datetime import datetime
 import os, json, fitz
+from pymongo import MongoClient
 
 console = Console()
 app = Flask(__name__)
+
+# Setup DB connection
+MONGODB_URI = os.getenv("MONGODB_URI")
+MONGODB_DB = os.getenv("MONGODB_DB", "casepilot")
+mongo_client = MongoClient(MONGODB_URI)
+db = mongo_client[MONGODB_DB]
 
 @app.route("/", methods=["GET"])
 def index():
@@ -80,10 +87,23 @@ def new_case():
         # Step 3: Evidence Analysis (Real processing)
         case = run_evidence(case, evidence_data)
         
-        # Step 4-6: Core Pipeline
+        # Step 4-5: Core Pipeline
         case = run_strategy(case)
         case = run_citation(case)
-        case = run_drafting(case)
+        
+        # Step 6: Multi-document Drafting
+        generated_docs = run_drafting_agent(
+            case, 
+            {"laws_found": case.get("citations", [])}, 
+            {"recommended_path": case.get("recommended_path", "")}
+        )
+        
+        # Save documents to DB
+        for doc in generated_docs:
+            db["documents"].insert_one({
+                "case_id": case["case_id"],
+                **doc
+            })
         
         # Step 7: MCP Memory (Hackathon Requirement)
         mcp_mem_agent = create_mcp_memory_agent()
@@ -114,10 +134,7 @@ def new_case():
                  for k,v in step.items() if k != "deadline"}
                 for step in case.get("action_timeline",[])
             ],
-            "documents_generated": [
-                {"doc_type": d["doc_type"], "length": len(d["content"]), "content": d["content"]}
-                for d in case.get("generated_docs",[])
-            ]
+            "documents_generated": generated_docs
         })
     except Exception as e:
         console.print_exception()
@@ -132,11 +149,7 @@ def resume():
 
 @app.route("/case/document/<case_id>", methods=["GET"])
 def get_document(case_id):
-    from pymongo import MongoClient
-    import os
-    client = MongoClient(os.getenv("MONGODB_URI"))
-    db = client[os.getenv("MONGODB_DB","casepilot")]
-    doc = db["generated_documents"].find_one({"case_id": case_id}, {"_id": 0, "embedding": 0})
+    doc = db["documents"].find_one({"case_id": case_id}, {"_id": 0, "embedding": 0})
     if not doc:
         return jsonify({"error": "document not found"}), 404
     doc["generated_at"] = str(doc.get("generated_at",""))
@@ -146,11 +159,6 @@ def get_document(case_id):
 def get_case(case_id):
     """Retrieve a previously saved case by ID."""
     try:
-        from pymongo import MongoClient
-        import os
-        client = MongoClient(os.getenv("MONGODB_URI"))
-        db = client[os.getenv("MONGODB_DB", "casepilot")]
-        
         # Find case
         case = db["cases"].find_one({"case_id": case_id})
         if not case:
@@ -166,10 +174,7 @@ def get_case(case_id):
         ))
         
         # Fetch generated documents
-        # Note: documents are currently saved in 'generated_documents' via Drafting Agent logic in app.py Step 6
-        # but the prompt mentions db['documents']. I will check both or stick to what is in generated_documents.
-        # Actually, in Step 6 of Drafting Agent generated docs are saved to 'generated_documents'.
-        documents = list(db["generated_documents"].find(
+        documents = list(db["documents"].find(
             {"case_id": case_id},
             {"_id": 0}
         ))
@@ -195,11 +200,6 @@ def get_case(case_id):
 def get_recent_cases():
     """Return the 10 most recent cases for the resume panel."""
     try:
-        from pymongo import MongoClient
-        import os
-        client = MongoClient(os.getenv("MONGODB_URI"))
-        db = client[os.getenv("MONGODB_DB", "casepilot")]
-        
         cases = list(db["cases"].find(
             {},
             {
