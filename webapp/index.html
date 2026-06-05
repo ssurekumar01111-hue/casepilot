@@ -268,6 +268,16 @@
 
         <!-- Results Section -->
         <div id="results" class="space-y-8">
+            <!-- Evidence Processed Card -->
+            <div id="evidence-results" class="hidden glass-card rounded-3xl p-8 border-l-4 border-l-green-500">
+                <h3 class="text-xl uppercase tracking-widest opacity-50 mb-6">Evidence Processed</h3>
+                <div id="evidence-chips-result" class="flex flex-wrap gap-3 mb-6"></div>
+                <div id="evidence-warning" class="hidden p-4 bg-yellow-500 bg-opacity-10 border border-yellow-500 border-opacity-30 rounded-xl text-yellow-500 text-sm flex items-center gap-3">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"/></svg>
+                    No evidence uploaded — Justice Score based on case description only.
+                </div>
+            </div>
+
             <div class="grid md:grid-cols-2 gap-8">
                 <!-- Justice Score -->
                 <div class="glass-card rounded-3xl p-8 flex flex-col items-center text-center">
@@ -328,13 +338,14 @@
                 <div class="bg-black bg-opacity-40 rounded-2xl p-8 font-mono text-sm leading-relaxed border border-white border-opacity-5 max-h-[500px] overflow-y-auto mb-8 whitespace-pre-wrap" id="doc-content">
                     Drafting content...
                 </div>
-                <button onclick="downloadDoc()" class="w-full gold-bg btn-gold py-4 rounded-xl flex items-center justify-center gap-3 font-bold uppercase tracking-widest text-sm shadow-lg">
+                <button id="download-btn" onclick="downloadDoc()" class="w-full gold-bg btn-gold py-4 rounded-xl flex items-center justify-center gap-3 font-bold uppercase tracking-widest text-sm shadow-lg">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
                     Download Legal Notice (.TXT)
                 </button>
             </div>
 
-            <div class="flex justify-center mt-10">
+            <!-- Start New Case Button -->
+            <div class="flex justify-center mt-10 pb-20">
                 <button onclick="resetApp()" class="border-2 border-gold-accent text-gold-accent px-8 py-4 rounded-xl font-bold uppercase tracking-widest hover:bg-gold-accent hover:text-black transition-all flex items-center gap-2">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
                     Start New Case
@@ -361,7 +372,7 @@
         const API_BASE = 'https://casepilot-34309631370.us-central1.run.app'; 
         
         let currentCaseData = null;
-        let uploadedFiles = [];
+        let uploadedFiles = []; // Array of actual File objects
 
         // --- Particle Background ---
         function initParticles() {
@@ -401,18 +412,9 @@
             for (let file of files) {
                 if (uploadedFiles.length >= 5) break;
                 if (uploadedFiles.some(f => f.name === file.name)) continue;
-                
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    uploadedFiles.push({
-                        name: file.name,
-                        content: e.target.result.split(',')[1], // base64
-                        type: file.type
-                    });
-                    renderChips();
-                };
-                reader.readAsDataURL(file);
+                uploadedFiles.push(file);
             }
+            renderChips();
         }
 
         function renderChips() {
@@ -430,33 +432,16 @@
         }
 
         function resetApp() {
-            // 1. Hide results section
             document.getElementById('results').style.display = 'none';
-            
-            // 2. Show input container
-            const inputContainer = document.getElementById('input-container');
-            inputContainer.classList.remove('hidden');
-            
-            // 3. Clear textarea
-            const desc = document.getElementById('description');
-            desc.value = '';
-            desc.disabled = false;
-            
-            // 4. Clear uploaded files
+            document.getElementById('input-container').classList.remove('hidden');
+            document.getElementById('description').value = '';
+            document.getElementById('description').disabled = false;
             uploadedFiles = [];
             renderChips();
-            
-            // 5. Reset button state
             document.getElementById('analyse-btn').classList.remove('hidden');
             document.getElementById('loading-state').classList.add('hidden');
-            
-            // Reset animations
-            document.querySelectorAll('.agent-item').forEach(item => {
-                item.classList.remove('active', 'done');
-            });
-
-            // 6. Smooth scroll to top of app
-            inputContainer.scrollIntoView({ behavior: 'smooth' });
+            document.querySelectorAll('.agent-item').forEach(item => item.classList.remove('active', 'done'));
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         // --- Main Logic ---
@@ -467,22 +452,22 @@
                 return;
             }
 
-            // UI Switch to Loading
             document.getElementById('analyse-btn').classList.add('hidden');
             document.getElementById('loading-state').classList.remove('hidden');
             document.getElementById('description').disabled = true;
 
-            // Start Agent Animations
             runAgentAnimations();
+
+            const formData = new FormData();
+            formData.append('description', desc);
+            uploadedFiles.forEach(file => {
+                formData.append('documents', file);
+            });
 
             try {
                 const response = await fetch(`${API_BASE}/case/new`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        description: desc,
-                        documents: uploadedFiles
-                    })
+                    body: formData
                 });
 
                 if (!response.ok) throw new Error("API call failed");
@@ -490,7 +475,7 @@
                 showResults(data);
             } catch (err) {
                 console.error(err);
-                // Fallback to Mock Data for demo if API fails
+                // Demo fallback
                 setTimeout(() => showResults(getMockData()), 3000);
             }
         }
@@ -510,18 +495,32 @@
 
         function showResults(data) {
             currentCaseData = data;
-            
-            // Hide Input and Loading
             document.getElementById('input-container').classList.add('hidden');
             document.getElementById('results').style.display = 'block';
 
-            // Justice Score Animation
+            // Evidence Results
+            const evRes = document.getElementById('evidence-results');
+            const chips = document.getElementById('evidence-chips-result');
+            const warn = document.getElementById('evidence-warning');
+            
+            evRes.classList.remove('hidden');
+            if (data.evidence_processed && data.evidence_processed.length > 0) {
+                warn.classList.add('hidden');
+                chips.innerHTML = data.evidence_processed.map(d => `
+                    <div class="px-4 py-2 bg-green-500 bg-opacity-10 border border-green-500 border-opacity-30 rounded-full text-xs font-bold text-green-500">
+                        ✅ ${d.filename} (${d.doc_type})
+                    </div>
+                `).join('');
+            } else {
+                warn.classList.remove('hidden');
+                chips.innerHTML = '';
+            }
+
+            // Justice Score
             const js = data.justice_score || {};
             const score = js.overall || 0;
             document.getElementById('score-value').innerText = score;
-            const offset = 440 - (440 * score / 100);
-            document.getElementById('score-circle').style.strokeDashoffset = offset;
-            
+            document.getElementById('score-circle').style.strokeDashoffset = 440 - (440 * score / 100);
             document.getElementById('legal-basis-val').innerText = (js.legal_basis || 0) + '%';
             document.getElementById('legal-basis-bar').style.width = (js.legal_basis || 0) + '%';
             document.getElementById('ev-strength-val').innerText = (js.evidence_strength || 0) + '%';
@@ -529,9 +528,8 @@
             document.getElementById('verdict').innerText = js.verdict || "Analysis complete.";
 
             // Strategy
-            document.getElementById('rec-path').innerText = data.recommended_path || "Path pending...";
-            const timeline = document.getElementById('timeline');
-            timeline.innerHTML = (data.action_timeline || []).map((step, i) => `
+            document.getElementById('rec-path').innerText = data.recommended_path || "";
+            document.getElementById('timeline').innerHTML = (data.action_timeline || []).map((step, i) => `
                 <div class="flex gap-4 items-start">
                     <div class="flex flex-col items-center">
                         <div class="w-4 h-4 rounded-full gold-bg shadow-[0_0_10px_#c9a84c]"></div>
@@ -540,14 +538,12 @@
                     <div>
                         <p class="text-sm font-bold text-gold-accent uppercase tracking-widest mb-1">Step ${step.step}</p>
                         <p class="text-sm opacity-90">${step.action}</p>
-                        <p class="text-[10px] opacity-40 mt-1 uppercase tracking-tighter">${step.law_basis || ''}</p>
                     </div>
                 </div>
             `).join('');
 
             // Citations
-            const citationsGrid = document.getElementById('citations-grid');
-            citationsGrid.innerHTML = (data.citations || []).map(c => `
+            document.getElementById('citations-grid').innerHTML = (data.citations || []).map(c => `
                 <div class="p-5 glass-card rounded-2xl flex flex-col md:flex-row gap-4 items-start md:items-center">
                     <div class="md:w-1/3">
                         <p class="text-gold-accent font-bold serif mb-1">${c.act}</p>
@@ -555,9 +551,6 @@
                     </div>
                     <div class="md:w-2/3 border-l border-white border-opacity-10 md:pl-6">
                         <p class="text-sm opacity-70 mb-3">${c.relevance}</p>
-                        <div class="w-full bg-white bg-opacity-5 h-1.5 rounded-full">
-                            <div class="gold-bg h-full opacity-60" style="width: ${Math.round((c.confidence || 0.8) * 100)}%"></div>
-                        </div>
                     </div>
                 </div>
             `).join('');
@@ -565,59 +558,33 @@
             // Document
             const doc = data.documents_generated ? data.documents_generated[0] : null;
             if (doc) {
-                document.getElementById('doc-type-badge').innerText = doc.doc_type;
+                document.getElementById('doc-type-badge').innerText = doc.doc_type.replace('_',' ').toUpperCase();
                 document.getElementById('doc-content').innerText = doc.content;
+                document.getElementById('download-btn').innerText = `Download ${doc.doc_type.replace('_',' ').toUpperCase()} (.TXT)`;
             }
         }
 
         function downloadDoc() {
-            if (!currentCaseData) return;
+            if (!currentCaseData || !currentCaseData.documents_generated[0]) return;
             const doc = currentCaseData.documents_generated[0];
             const blob = new Blob([doc.content], { type: 'text/plain' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `CasePilot_${doc.doc_type.replace(' ','_')}.txt`;
+            a.download = `CasePilot_${doc.doc_type}.txt`;
             a.click();
         }
 
         function getMockData() {
             return {
-                "case_id": "CPA-20260605-DEMO",
-                "dispute_type": "landlord_deposit",
-                "summary": "Landlord has failed to return security deposit of ₹50,000 after tenant vacated property 3 months ago.",
-                "recommended_path": "Send a formal legal notice immediately under Consumer Protection Act 2019. If no response within 15 days, file complaint at District Consumer Disputes Redressal Commission.",
-                "justice_score": {
-                    "overall": 82,
-                    "legal_basis": 91,
-                    "evidence_strength": 74,
-                    "verdict": "Strong case. Your legal foundation is solid. Address the 2 evidence gaps before filing."
-                },
-                "citations": [
-                    {
-                        "act": "Consumer Protection Act, 2019",
-                        "section": "S.2(47)",
-                        "relevance": "Defines deficiency in service — directly applicable to landlord's failure to return deposit.",
-                        "confidence": 0.91
-                    },
-                    {
-                        "act": "Transfer of Property Act, 1882", 
-                        "section": "S.108(q)",
-                        "relevance": "Landlord's obligation to restore possession and return security at end of tenancy.",
-                        "confidence": 0.87
-                    }
-                ],
-                "action_timeline": [
-                    {"step": 1, "action": "Issue formal Legal Notice via Registered Post", "law_basis": "S.80 CPC"},
-                    {"step": 2, "action": "Wait 15 days for compliance", "law_basis": "Standard Procedural Rule"},
-                    {"step": 3, "action": "File Online Consumer Complaint (e-Daakhil)", "law_basis": "CPA 2019"}
-                ],
-                "documents_generated": [
-                    {
-                        "doc_type": "Legal Notice",
-                        "content": "LEGAL NOTICE\n\nTo,\n[Landlord Name]\n[Landlord Address]\n\nSub: Demand for return of Security Deposit of ₹50,000\n\nDear Sir/Madam,\n\nI occupied your premises under a rental agreement and has since vacated the property. Despite repeated requests, you have failed to return the security deposit of ₹50,000.\n\nThis constitutes a deficiency in service under Section 2(47) of the Consumer Protection Act, 2019.\n\nYou are hereby called upon to return the said amount within 15 days, failing which I shall be constrained to initiate appropriate legal proceedings.\n\nIssued without prejudice.\n\n[Your Name]\n[Date]"
-                    }
-                ]
+                "case_id": "CPA-DEMO",
+                "dispute_type": "landlord_tenant",
+                "summary": "Landlord withholding security deposit.",
+                "recommended_path": "Issue a formal legal notice.",
+                "justice_score": { "overall": 80, "legal_basis": 90, "evidence_strength": 70, "verdict": "Strong case foundation." },
+                "citations": [{ "act": "Indian Contract Act", "section": "S.73", "relevance": "Breach of contract terms." }],
+                "action_timeline": [{ "step": 1, "action": "Send Legal Notice" }],
+                "documents_generated": [{ "doc_type": "legal_notice", "content": "LEGAL NOTICE TEXT..." }]
             };
         }
     </script>

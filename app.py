@@ -1,5 +1,5 @@
-import os
 from flask import Flask, request, jsonify, send_from_directory
+from werkzeug.utils import secure_filename
 from agents.intake_agent import run_intake
 from agents.law_research_agent import run_law_research
 from agents.evidence_agent import run_evidence
@@ -10,7 +10,8 @@ from agents.memory_agent import run_memory, resume_session
 from agents.mcp_law_research_agent import create_mcp_law_research_agent
 from agents.mcp_memory_agent import create_mcp_memory_agent
 from rich.console import Console
-import os, json
+from datetime import datetime
+import os, json, fitz
 
 console = Console()
 app = Flask(__name__)
@@ -25,31 +26,67 @@ def health():
 
 @app.route("/case/new", methods=["POST"])
 def new_case():
-    data = request.json
-    user_id = data.get("user_id", "USR-DEMO")
-    situation = data.get("situation", data.get("description", ""))
+    # Handle both JSON and multipart
+    if request.content_type and 'multipart/form-data' in request.content_type:
+        user_id = request.form.get('user_id', 'USR-DEMO')
+        situation = request.form.get('situation', request.form.get('description', ''))
+        files = request.files.getlist('documents')
+    else:
+        data = request.json or {}
+        user_id = data.get("user_id", "USR-DEMO")
+        situation = data.get("situation", data.get("description", ""))
+        files = []
+
     if not situation:
         return jsonify({"error": "situation is required"}), 400
+
     try:
+        # Process uploaded files
+        evidence_data = []
+        for file in files:
+            if file and file.filename:
+                filename = secure_filename(file.filename)
+                file_bytes = file.read()
+                
+                # Extract text based on file type
+                if filename.lower().endswith('.pdf'):
+                    doc = fitz.open(stream=file_bytes, filetype="pdf")
+                    text = ""
+                    for page in doc:
+                        text += page.get_text()
+                    doc.close()
+                elif filename.lower().endswith(('.txt', '.md', '.json')):
+                    text = file_bytes.decode('utf-8', errors='ignore')
+                else:
+                    text = f"Document: {filename} (uploaded as evidence)"
+                
+                if text.strip():
+                    evidence_data.append({
+                        "text": text,
+                        "metadata": {
+                            "filename": filename,
+                            "size": len(file_bytes),
+                            "type": file.content_type or "unknown"
+                        }
+                    })
+
         # Step 1: Intake
         case = run_intake(user_id, situation)
         
         # Step 2: MCP Law Research
         mcp_law_agent = create_mcp_law_research_agent()
-        # Note: ADK Agents are designed for async orchestration.
-        # For this hackathon demo, we demonstrate the MCP tool integration
-        # by initializing the agent and toolset.
         case = run_law_research(case)
         
-        # Step 3-6: Core Pipeline
-        case = run_evidence(case, [])
+        # Step 3: Evidence Analysis (Real processing)
+        case = run_evidence(case, evidence_data)
+        
+        # Step 4-6: Core Pipeline
         case = run_strategy(case)
         case = run_citation(case)
         case = run_drafting(case)
         
         # Step 7: MCP Memory (Hackathon Requirement)
         mcp_mem_agent = create_mcp_memory_agent()
-        # Demonstration of tool readiness
         console.print("[blue]MCP Tools Initialized for Law Research and Memory[/blue]")
         
         # Step 8: Standard Memory for frontend compatibility
@@ -62,6 +99,16 @@ def new_case():
             "recommended_path": case.get("recommended_path",""),
             "justice_score": case.get("justice_score",{}),
             "citations": case.get("citations",[]),
+            "evidence_analysis": case.get("evidence_analysis", {}),
+            "evidence_processed": [
+                {
+                    "filename": d["filename"],
+                    "doc_type": d.get("doc_type", "other"),
+                    "summary": d.get("summary", ""),
+                    "stored_in_atlas": True
+                }
+                for d in case.get("analyzed_docs", [])
+            ],
             "action_timeline": [
                 {k: str(v) if hasattr(v,"isoformat") else v
                  for k,v in step.items() if k != "deadline"}
@@ -73,6 +120,7 @@ def new_case():
             ]
         })
     except Exception as e:
+        console.print_exception()
         return jsonify({"error": str(e)}), 500
 
 @app.route("/case/resume", methods=["POST"])

@@ -112,27 +112,77 @@ def analyze_single_document(filepath: str, case_id: str) -> dict:
     return doc_record
 
 
-def run_evidence(case_doc: dict, file_paths: list[str]) -> dict:
+def store_evidence(case_id: str, text: str, metadata: dict) -> str:
+    """Embed document text and store in Atlas evidence collection."""
+    # Generate embedding
+    response = genai_client.models.embed_content(
+        model=EMBEDDING_MODEL,
+        contents=text[:8000],  # truncate for embedding limit
+        config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
+    )
+    embedding = response.embeddings[0].values
+    
+    doc = {
+        "case_id": case_id,
+        "filename": metadata["filename"],
+        "file_type": metadata["type"],
+        "text": text[:5000],
+        "embedding": embedding,
+        "uploaded_at": datetime.utcnow().isoformat()
+    }
+    result = evidence_col.insert_one(doc)
+    return str(result.inserted_id)
+
+
+def run_evidence(case_doc: dict, evidence_data: list[dict] = None) -> dict:
+    """
+    Analyzes evidence documents alongside the case facts.
+    evidence_data: list of {'text': str, 'metadata': dict}
+    """
     console.print("\n[bold cyan]Agent — Evidence Analysis[/bold cyan]")
 
-    if not file_paths:
+    if not evidence_data:
         console.print("[yellow]   No documents provided — skipping evidence analysis[/yellow]")
-        case_doc["evidence_analysis"] = {"case_strength": 40, "evidence_missing": ["No documents uploaded yet"]}
+        # Provide a more detailed missing items list for the dispute type
+        missing_map = {
+            "landlord_tenant": ["Rental Agreement", "Security Deposit Receipt", "Vacating Notice", "Bank Statement"],
+            "consumer_fraud": ["Invoice/Bill", "Payment Proof", "Delivery Receipt", "Correspondence with Seller"],
+            "workplace": ["Appointment Letter", "Salary Slips", "Resignation/Termination Letter", "Experience Certificate"],
+            "rti_filing": ["RTI Application Copy", "Speed Post Receipt", "Acknowledge Card"],
+        }
+        dispute = case_doc.get("dispute_type", "other")
+        case_doc["evidence_analysis"] = {
+            "case_strength": 35,
+            "evidence_missing": missing_map.get(dispute, ["Official correspondence", "Payment proofs", "Agreements"]),
+            "evidence_have": [],
+            "recommendation": "Please upload supporting documents like agreements or receipts to strengthen your case."
+        }
         return case_doc
 
     analyzed_docs = []
-    for fp in file_paths:
-        console.print(f"   Analyzing: {Path(fp).name}...")
-        doc = analyze_single_document(fp, case_doc["case_id"])
-        if "error" not in doc:
-            analyzed_docs.append(doc)
-            console.print(f"[green]   ✅ {doc['doc_type']} — {doc['summary'][:80]}[/green]")
-            console.print(f"      Parties: {doc['parties']}")
-            console.print(f"      Dates: {doc['dates'][:3]}")
-            console.print(f"      Amounts: {doc['amounts'][:3]}")
-
-    if not analyzed_docs:
-        return case_doc
+    evidence_ids = []
+    
+    for item in evidence_data:
+        text = item["text"]
+        meta = item["metadata"]
+        console.print(f"   Analyzing: {meta['filename']}...")
+        
+        # Analyze content
+        response = genai_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=EVIDENCE_EXTRACT_PROMPT.format(text=text[:3000]),
+            config=types.GenerateContentConfig(temperature=0.1)
+        )
+        raw = response.text.strip().replace("```json","").replace("```","").strip()
+        extracted = json.loads(raw)
+        
+        # Store in Atlas
+        eid = store_evidence(case_doc["case_id"], text, meta)
+        evidence_ids.append(eid)
+        
+        doc_info = {**extracted, "filename": meta["filename"], "evidence_id": eid}
+        analyzed_docs.append(doc_info)
+        console.print(f"[green]   ✅ {extracted.get('doc_type')} — {extracted.get('summary','')[:80]}[/green]")
 
     evidence_summary = "\n".join([
         f"Document {i+1} ({d['doc_type']}): {d['summary']} | Dates: {d['dates']} | Amounts: {d['amounts']} | Key clauses: {d['key_clauses']}"
@@ -157,12 +207,11 @@ def run_evidence(case_doc: dict, file_paths: list[str]) -> dict:
     for item in gap_analysis.get("evidence_missing", []):
         console.print(f"  [red]❌ MISSING:[/red] {item}")
     console.print(f"\n  Case strength: [bold]{gap_analysis.get('case_strength', 0)}/100[/bold]")
-    console.print(f"  Recommendation: {gap_analysis.get('recommendation','')[:150]}")
 
     cases_col.update_one(
         {"case_id": case_doc["case_id"]},
         {"$set": {
-            "evidence_ids": [d["evidence_id"] for d in analyzed_docs],
+            "evidence_ids": evidence_ids,
             "evidence_analysis": gap_analysis
         }}
     )
