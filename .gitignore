@@ -1,6 +1,6 @@
 .env
 venv/
-pycache/
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -10,3 +10,7 @@ corpus/raw/
 .DS_Store
 dist/
 build/
+check_db.py
+check_mongo.py
+test_*.py
+*.zip

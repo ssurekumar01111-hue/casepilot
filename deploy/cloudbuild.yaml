@@ -1,0 +1,17 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/casepilot', '.']
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/casepilot']
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - casepilot
+      - --image=gcr.io/$PROJECT_ID/casepilot
+      - --region=asia-south1
+      - --platform=managed
+      - --allow-unauthenticated
+      - --memory=512Mi
+      - --timeout=300

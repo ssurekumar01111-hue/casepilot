@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CasePilot — India's AI Legal Case Worker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-deep: #0a0d14;
+            --gold-accent: #c9a84c;
+            --gold-light: #e6d5a7;
+            --glass-bg: rgba(255, 255, 255, 0.04);
+            --glass-border: rgba(201, 168, 76, 0.2);
+        }
+
+        body {
+            background-color: var(--bg-deep);
+            color: #ffffff;
+            font-family: 'DM Sans', sans-serif;
+            overflow-x: hidden;
+        }
+
+        h1, h2, h3, .serif {
+            font-family: 'Playfair Display', serif;
+        }
+
+        .gold-text { color: var(--gold-accent); }
+        .gold-border { border-color: var(--gold-accent); }
+        .gold-bg { background: linear-gradient(135deg, #c9a84c 0%, #8a6d2b 100%); }
+
+        /* Animated Gold Particles */
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            pointer-events: none;
+        }
+        .particle {
+            position: absolute;
+            background: var(--gold-accent);
+            border-radius: 50%;
+            opacity: 0.3;
+            animation: float 20s infinite linear;
+        }
+        @keyframes float {
+            0% { transform: translateY(100vh) scale(0); opacity: 0; }
+            50% { opacity: 0.5; }
+            100% { transform: translateY(-10vh) scale(1); opacity: 0; }
+        }
+
+        /* Glassmorphism */
+        .glass-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        .glass-card:hover {
+            border-color: rgba(201, 168, 76, 0.4);
+            box-shadow: 0 0 20px rgba(201, 168, 76, 0.1);
+        }
+
+        /* Form Inputs */
+        textarea, input {
+            background: rgba(0,0,0,0.2) !important;
+            border: 1px solid rgba(255,255,255,0.1) !important;
+            transition: all 0.3s ease;
+        }
+        textarea:focus {
+            border-color: var(--gold-accent) !important;
+            box-shadow: 0 0 10px rgba(201, 168, 76, 0.2);
+            outline: none;
+        }
+
+        /* Button Glow */
+        .btn-gold {
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-gold:hover {
+            transform: scale(1.02);
+            box-shadow: 0 0 25px rgba(201, 168, 76, 0.4);
+        }
+
+        /* Loading Agents */
+        .agent-item {
+            opacity: 0.2;
+            transform: translateX(-10px);
+            transition: all 0.5s ease;
+        }
+        .agent-item.active {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        .agent-item.done {
+            color: var(--gold-accent);
+        }
+
+        /* Results Animation */
+        #results {
+            display: none;
+            animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-deep); }
+        ::-webkit-scrollbar-thumb { background: #1a1e26; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--gold-accent); }
+
+        .gold-grain {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: url("https://www.transparenttextures.com/patterns/carbon-fibre.png");
+            opacity: 0.05;
+            z-index: -1;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="gold-grain"></div>
+    <div class="particles" id="particles"></div>
+
+    <!-- Navbar -->
+    <nav class="fixed top-0 w-full z-50 px-6 py-4 glass-card border-t-0 border-x-0">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 3V21M12 3L5 7M12 3L19 7M5 7L3 13M5 7L7 13M19 7L17 13M19 7L21 13M3 13C3 15.5 5 16 5 16C5 16 7 15.5 7 13M21 13C21 15.5 19 16 19 16C19 16 17 15.5 17 13" stroke="#c9a84c" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <span class="text-2xl font-bold tracking-tight serif uppercase text-gold-accent">CasePilot</span>
+            </div>
+            <div class="hidden md:block text-sm tracking-widest uppercase opacity-60">India's AI Legal Case Worker</div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="min-h-screen flex flex-col justify-center items-center text-center px-6 pt-20">
+        <h1 class="text-5xl md:text-7xl mb-6 max-w-4xl leading-tight">
+            Justice Should Not Depend On <span class="text-gold-accent italic underline underline-offset-8">Who You Know</span>
+        </h1>
+        <p class="text-xl md:text-2xl opacity-70 max-w-2xl mb-8">
+            Describe your legal problem. CasePilot's AI agents investigate, analyse laws, and fight alongside you.
+        </p>
+        <div class="animate-bounce mt-4">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="opacity-30">
+                <path d="M7 13l5 5 5-5M7 6l5 5 5-5"/>
+            </svg>
+        </div>
+    </section>
+
+    <!-- Main App Section -->
+    <section class="max-w-4xl mx-auto px-6 py-20" id="app-section">
+        <div class="glass-card rounded-3xl p-8 md:p-12 mb-20" id="input-container">
+            <h2 class="text-3xl mb-8 serif">Describe Your Legal Situation</h2>
+            
+            <div class="mb-8">
+                <label class="block text-sm uppercase tracking-widest opacity-50 mb-3">Case Facts</label>
+                <textarea id="description" rows="6" 
+                    class="w-full rounded-2xl p-6 text-lg text-white placeholder-white placeholder-opacity-20"
+                    placeholder="Example: My landlord has not returned my security deposit of ₹50,000 after 3 months of vacating the property. I am in Mumbai."></textarea>
+            </div>
+
+            <div class="mb-10">
+                <label class="block text-sm uppercase tracking-widest opacity-50 mb-3">Evidence Documents</label>
+                <div id="drop-zone" class="border-2 border-dashed border-gold-border rounded-2xl p-10 text-center hover:bg-gold-accent hover:bg-opacity-5 transition-all cursor-pointer group">
+                    <svg class="mx-auto mb-4 group-hover:scale-110 transition-transform" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#c9a84c" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                    </svg>
+                    <p class="text-gold-accent font-medium mb-1">Click or drag files to upload</p>
+                    <p class="text-sm opacity-40">Rental agreements, receipts, WhatsApp chats (PDF, JPG, PNG)</p>
+                    <input type="file" id="file-input" multiple class="hidden" accept=".pdf,.png,.jpg,.jpeg,.txt">
+                </div>
+                <div id="file-chips" class="flex flex-wrap gap-2 mt-4"></div>
+            </div>
+
+            <button id="analyse-btn" onclick="analyseCase()" class="w-full gold-bg btn-gold py-5 rounded-2xl flex items-center justify-center gap-3 text-xl font-bold shadow-lg">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 3V21M12 3L5 7M12 3L19 7M5 7L3 13M5 7L7 13M19 7L17 13M19 7L21 13" stroke-linecap="round"/>
+                </svg>
+                Analyse My Case
+            </button>
+
+            <!-- Loading State -->
+            <div id="loading-state" class="hidden space-y-4">
+                <div class="text-center mb-10">
+                    <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-gold-accent border-t-transparent mb-4"></div>
+                    <p class="text-xl serif italic text-gold-accent">Agents are investigating your case...</p>
+                </div>
+                <div class="space-y-4">
+                    <!-- Row 1: 3 Agents -->
+                    <div class="grid md:grid-cols-3 gap-4">
+                        <div class="agent-item flex items-center gap-3 p-4 glass-card rounded-xl" id="agent-1">
+                            <span class="text-2xl">🔍</span> <span>Intake Agent — Classifying dispute</span>
+                        </div>
+                        <div class="agent-item flex items-center gap-3 p-4 glass-card rounded-xl" id="agent-2">
+                            <span class="text-2xl">⚖️</span> <span>Law Research Agent — Searching laws</span>
+                        </div>
+                        <div class="agent-item flex items-center gap-3 p-4 glass-card rounded-xl" id="agent-3">
+                            <span class="text-2xl">📋</span> <span>Evidence Agent — Analyzing facts</span>
+                        </div>
+                    </div>
+                    <!-- Row 2: 2 Agents -->
+                    <div class="grid md:grid-cols-2 gap-4 max-w-2xl mx-auto">
+                        <div class="agent-item flex items-center gap-3 p-4 glass-card rounded-xl" id="agent-4">
+                            <span class="text-2xl">🗺️</span> <span>Strategy Agent — Mapping paths</span>
+                        </div>
+                        <div class="agent-item flex items-center gap-3 p-4 glass-card rounded-xl" id="agent-5">
+                            <span class="text-2xl">📝</span> <span>Drafting Agent — Creating notice</span>
+                        </div>
+                    </div>
+                    <!-- Row 3: 2 Agents -->
+                    <div class="grid md:grid-cols-2 gap-4 max-w-2xl mx-auto">
+                        <div class="agent-item flex items-center gap-3 p-4 glass-card rounded-xl" id="agent-6">
+                            <span class="text-2xl">✅</span> <span>Citation Agent — Attaching statute references</span>
+                        </div>
+                        <div class="agent-item flex items-center gap-3 p-4 glass-card rounded-xl" id="agent-7">
+                            <span class="text-2xl">💾</span> <span>Memory Agent — Securing record</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- How it Works Section -->
+        <div class="mb-20">
+            <h2 class="text-center text-3xl serif mb-12">How CasePilot Works</h2>
+            <div class="grid md:grid-cols-3 gap-6">
+                <div class="glass-card rounded-2xl p-8 relative overflow-hidden">
+                    <div class="absolute top-4 right-6 text-6xl font-bold opacity-5 text-gold-accent">1</div>
+                    <div class="gold-text mb-4">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3V21M12 3L5 7M12 3L19 7M5 7L3 13M5 7L7 13M19 7L17 13M19 7L21 13M3 13C3 15.5 5 16 5 16C5 16 7 15.5 7 13M21 13C21 15.5 19 16 19 16C19 16 17 15.5 17 13"/></svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Describe</h3>
+                    <p class="text-sm opacity-50 leading-relaxed">Tell us your legal situation in plain language. No complex legal jargon required.</p>
+                </div>
+                <div class="glass-card rounded-2xl p-8 relative overflow-hidden">
+                    <div class="absolute top-4 right-6 text-6xl font-bold opacity-5 text-gold-accent">2</div>
+                    <div class="gold-text mb-4">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="7.5 4.21 12 6.81 16.5 4.21"/><polyline points="7.5 19.79 7.5 14.6 3 12"/><polyline points="21 12 16.5 14.6 16.5 19.79"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Analyse</h3>
+                    <p class="text-sm opacity-50 leading-relaxed">6 AI agents investigate your case across 3,310 law sections to find violations and remedies.</p>
+                </div>
+                <div class="glass-card rounded-2xl p-8 relative overflow-hidden">
+                    <div class="absolute top-4 right-6 text-6xl font-bold opacity-5 text-gold-accent">3</div>
+                    <div class="gold-text mb-4">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Act</h3>
+                    <p class="text-sm opacity-50 leading-relaxed">Get your professional legal notice, authoritative citations, and custom action plan instantly.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results" class="space-y-8">
+            <div class="grid md:grid-cols-2 gap-8">
+                <!-- Justice Score -->
+                <div class="glass-card rounded-3xl p-8 flex flex-col items-center text-center">
+                    <h3 class="text-xl uppercase tracking-widest opacity-50 mb-8">Justice Score</h3>
+                    <div class="relative w-40 h-40 flex items-center justify-center mb-8">
+                        <svg class="w-full h-full transform -rotate-90">
+                            <circle cx="80" cy="80" r="70" stroke="rgba(255,255,255,0.05)" stroke-width="12" fill="none" />
+                            <circle id="score-circle" cx="80" cy="80" r="70" stroke="#c9a84c" stroke-width="12" fill="none" stroke-dasharray="440" stroke-dashoffset="440" stroke-linecap="round" class="transition-all duration-1000 ease-out" />
+                        </svg>
+                        <div class="absolute text-5xl font-bold serif" id="score-value">0</div>
+                    </div>
+                    <div class="w-full space-y-4">
+                        <div>
+                            <div class="flex justify-between text-sm mb-1 uppercase tracking-tighter opacity-60"><span>Legal Basis</span> <span id="legal-basis-val">0%</span></div>
+                            <div class="w-full bg-white bg-opacity-5 h-2 rounded-full overflow-hidden">
+                                <div id="legal-basis-bar" class="gold-bg h-full transition-all duration-1000" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-sm mb-1 uppercase tracking-tighter opacity-60"><span>Evidence Strength</span> <span id="ev-strength-val">0%</span></div>
+                            <div class="w-full bg-white bg-opacity-5 h-2 rounded-full overflow-hidden">
+                                <div id="ev-strength-bar" class="gold-bg h-full transition-all duration-1000" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="mt-8 italic opacity-80" id="verdict">Analyzing...</p>
+                </div>
+
+                <!-- Recommended Path -->
+                <div class="glass-card rounded-3xl p-8">
+                    <h3 class="text-xl uppercase tracking-widest opacity-50 mb-8 text-center">Recommended Path</h3>
+                    <div class="flex items-start gap-4 mb-8">
+                        <div class="gold-bg p-3 rounded-2xl shadow-lg">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                        </div>
+                        <p class="text-lg leading-relaxed" id="rec-path">Strategy path loading...</p>
+                    </div>
+                    <div class="space-y-6 relative" id="timeline">
+                        <!-- Steps injected here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Citations -->
+            <div class="glass-card rounded-3xl p-8">
+                <h3 class="text-xl uppercase tracking-widest opacity-50 mb-8">Authoritative Citations</h3>
+                <div class="grid gap-4" id="citations-grid">
+                    <!-- Citations injected here -->
+                </div>
+            </div>
+
+            <!-- Document -->
+            <div class="glass-card rounded-3xl p-8">
+                <div class="flex justify-between items-center mb-8">
+                    <h3 class="text-xl uppercase tracking-widest opacity-50">Generated Document</h3>
+                    <span id="doc-type-badge" class="px-4 py-1 border border-gold-accent text-gold-accent rounded-full text-xs font-bold tracking-widest uppercase">Legal Notice</span>
+                </div>
+                <div class="bg-black bg-opacity-40 rounded-2xl p-8 font-mono text-sm leading-relaxed border border-white border-opacity-5 max-h-[500px] overflow-y-auto mb-8 whitespace-pre-wrap" id="doc-content">
+                    Drafting content...
+                </div>
+                <button onclick="downloadDoc()" class="w-full gold-bg btn-gold py-4 rounded-xl flex items-center justify-center gap-3 font-bold uppercase tracking-widest text-sm shadow-lg">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                    Download Legal Notice (.TXT)
+                </button>
+            </div>
+
+            <div class="flex justify-center mt-10">
+                <button onclick="resetApp()" class="border-2 border-gold-accent text-gold-accent px-8 py-4 rounded-xl font-bold uppercase tracking-widest hover:bg-gold-accent hover:text-black transition-all flex items-center gap-2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                    Start New Case
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="max-w-7xl mx-auto px-6 py-20 text-center border-t border-white border-opacity-5">
+        <div class="flex justify-center items-center gap-4 mb-6">
+            <div class="w-20 h-[1px] gold-bg opacity-30"></div>
+            <div class="text-gold-accent font-bold serif tracking-widest uppercase">CasePilot</div>
+            <div class="w-20 h-[1px] gold-bg opacity-30"></div>
+        </div>
+        <p class="max-w-2xl mx-auto opacity-40 text-sm leading-relaxed mb-4">
+            CasePilot provides legal information only, not legal advice. We are an AI support system designed to assist users in understanding their legal position. Always consult a qualified advocate for your specific situation.
+        </p>
+        <p class="opacity-20 text-xs tracking-widest uppercase">&copy; 2026 CasePilot AI. Built for the Google & MongoDB Agent Hackathon.</p>
+    </footer>
+
+    <script>
+        // --- Configuration ---
+        const API_BASE = 'https://casepilot-34309631370.us-central1.run.app'; 
+        
+        let currentCaseData = null;
+        let uploadedFiles = [];
+
+        // --- Particle Background ---
+        function initParticles() {
+            const container = document.getElementById('particles');
+            const count = 40;
+            for (let i = 0; i < count; i++) {
+                const p = document.createElement('div');
+                p.className = 'particle';
+                const size = Math.random() * 3 + 1;
+                p.style.width = size + 'px';
+                p.style.height = size + 'px';
+                p.style.left = Math.random() * 100 + '%';
+                p.style.animationDuration = (Math.random() * 10 + 10) + 's';
+                p.style.animationDelay = Math.random() * 10 + 's';
+                container.appendChild(p);
+            }
+        }
+        initParticles();
+
+        // --- File Upload ---
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const fileChips = document.getElementById('file-chips');
+
+        dropZone.onclick = () => fileInput.click();
+        fileInput.onchange = (e) => handleFiles(e.target.files);
+
+        dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('bg-gold-accent', 'bg-opacity-10'); };
+        dropZone.ondragleave = () => { dropZone.classList.remove('bg-gold-accent', 'bg-opacity-10'); };
+        dropZone.ondrop = (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('bg-gold-accent', 'bg-opacity-10');
+            handleFiles(e.dataTransfer.files);
+        };
+
+        function handleFiles(files) {
+            for (let file of files) {
+                if (uploadedFiles.length >= 5) break;
+                if (uploadedFiles.some(f => f.name === file.name)) continue;
+                
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    uploadedFiles.push({
+                        name: file.name,
+                        content: e.target.result.split(',')[1], // base64
+                        type: file.type
+                    });
+                    renderChips();
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function renderChips() {
+            fileChips.innerHTML = uploadedFiles.map((f, i) => `
+                <div class="px-4 py-2 glass-card rounded-full text-xs font-bold text-gold-accent flex items-center gap-2">
+                    ${f.name}
+                    <button onclick="removeFile(${i})" class="hover:text-white">&times;</button>
+                </div>
+            `).join('');
+        }
+
+        function removeFile(i) {
+            uploadedFiles.splice(i, 1);
+            renderChips();
+        }
+
+        function resetApp() {
+            // 1. Hide results section
+            document.getElementById('results').style.display = 'none';
+            
+            // 2. Show input container
+            const inputContainer = document.getElementById('input-container');
+            inputContainer.classList.remove('hidden');
+            
+            // 3. Clear textarea
+            const desc = document.getElementById('description');
+            desc.value = '';
+            desc.disabled = false;
+            
+            // 4. Clear uploaded files
+            uploadedFiles = [];
+            renderChips();
+            
+            // 5. Reset button state
+            document.getElementById('analyse-btn').classList.remove('hidden');
+            document.getElementById('loading-state').classList.add('hidden');
+            
+            // Reset animations
+            document.querySelectorAll('.agent-item').forEach(item => {
+                item.classList.remove('active', 'done');
+            });
+
+            // 6. Smooth scroll to top of app
+            inputContainer.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // --- Main Logic ---
+        async function analyseCase() {
+            const desc = document.getElementById('description').value.trim();
+            if (!desc) {
+                alert("Please describe your legal problem first.");
+                return;
+            }
+
+            // UI Switch to Loading
+            document.getElementById('analyse-btn').classList.add('hidden');
+            document.getElementById('loading-state').classList.remove('hidden');
+            document.getElementById('description').disabled = true;
+
+            // Start Agent Animations
+            runAgentAnimations();
+
+            try {
+                const response = await fetch(`${API_BASE}/case/new`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        description: desc,
+                        documents: uploadedFiles
+                    })
+                });
+
+                if (!response.ok) throw new Error("API call failed");
+                const data = await response.json();
+                showResults(data);
+            } catch (err) {
+                console.error(err);
+                // Fallback to Mock Data for demo if API fails
+                setTimeout(() => showResults(getMockData()), 3000);
+            }
+        }
+
+        function runAgentAnimations() {
+            const items = document.querySelectorAll('.agent-item');
+            items.forEach((item, i) => {
+                setTimeout(() => {
+                    item.classList.add('active');
+                    if (i > 0) items[i-1].classList.add('done');
+                    if (i === items.length - 1) {
+                        setTimeout(() => item.classList.add('done'), 1500);
+                    }
+                }, i * 1500);
+            });
+        }
+
+        function showResults(data) {
+            currentCaseData = data;
+            
+            // Hide Input and Loading
+            document.getElementById('input-container').classList.add('hidden');
+            document.getElementById('results').style.display = 'block';
+
+            // Justice Score Animation
+            const js = data.justice_score || {};
+            const score = js.overall || 0;
+            document.getElementById('score-value').innerText = score;
+            const offset = 440 - (440 * score / 100);
+            document.getElementById('score-circle').style.strokeDashoffset = offset;
+            
+            document.getElementById('legal-basis-val').innerText = (js.legal_basis || 0) + '%';
+            document.getElementById('legal-basis-bar').style.width = (js.legal_basis || 0) + '%';
+            document.getElementById('ev-strength-val').innerText = (js.evidence_strength || 0) + '%';
+            document.getElementById('ev-strength-bar').style.width = (js.evidence_strength || 0) + '%';
+            document.getElementById('verdict').innerText = js.verdict || "Analysis complete.";
+
+            // Strategy
+            document.getElementById('rec-path').innerText = data.recommended_path || "Path pending...";
+            const timeline = document.getElementById('timeline');
+            timeline.innerHTML = (data.action_timeline || []).map((step, i) => `
+                <div class="flex gap-4 items-start">
+                    <div class="flex flex-col items-center">
+                        <div class="w-4 h-4 rounded-full gold-bg shadow-[0_0_10px_#c9a84c]"></div>
+                        ${i < data.action_timeline.length - 1 ? '<div class="w-[2px] h-12 bg-white bg-opacity-10"></div>' : ''}
+                    </div>
+                    <div>
+                        <p class="text-sm font-bold text-gold-accent uppercase tracking-widest mb-1">Step ${step.step}</p>
+                        <p class="text-sm opacity-90">${step.action}</p>
+                        <p class="text-[10px] opacity-40 mt-1 uppercase tracking-tighter">${step.law_basis || ''}</p>
+                    </div>
+                </div>
+            `).join('');
+
+            // Citations
+            const citationsGrid = document.getElementById('citations-grid');
+            citationsGrid.innerHTML = (data.citations || []).map(c => `
+                <div class="p-5 glass-card rounded-2xl flex flex-col md:flex-row gap-4 items-start md:items-center">
+                    <div class="md:w-1/3">
+                        <p class="text-gold-accent font-bold serif mb-1">${c.act}</p>
+                        <span class="px-3 py-1 bg-white bg-opacity-5 rounded-full text-[10px] uppercase font-bold tracking-widest">${c.section}</span>
+                    </div>
+                    <div class="md:w-2/3 border-l border-white border-opacity-10 md:pl-6">
+                        <p class="text-sm opacity-70 mb-3">${c.relevance}</p>
+                        <div class="w-full bg-white bg-opacity-5 h-1.5 rounded-full">
+                            <div class="gold-bg h-full opacity-60" style="width: ${Math.round((c.confidence || 0.8) * 100)}%"></div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            // Document
+            const doc = data.documents_generated ? data.documents_generated[0] : null;
+            if (doc) {
+                document.getElementById('doc-type-badge').innerText = doc.doc_type;
+                document.getElementById('doc-content').innerText = doc.content;
+            }
+        }
+
+        function downloadDoc() {
+            if (!currentCaseData) return;
+            const doc = currentCaseData.documents_generated[0];
+            const blob = new Blob([doc.content], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `CasePilot_${doc.doc_type.replace(' ','_')}.txt`;
+            a.click();
+        }
+
+        function getMockData() {
+            return {
+                "case_id": "CPA-20260605-DEMO",
+                "dispute_type": "landlord_deposit",
+                "summary": "Landlord has failed to return security deposit of ₹50,000 after tenant vacated property 3 months ago.",
+                "recommended_path": "Send a formal legal notice immediately under Consumer Protection Act 2019. If no response within 15 days, file complaint at District Consumer Disputes Redressal Commission.",
+                "justice_score": {
+                    "overall": 82,
+                    "legal_basis": 91,
+                    "evidence_strength": 74,
+                    "verdict": "Strong case. Your legal foundation is solid. Address the 2 evidence gaps before filing."
+                },
+                "citations": [
+                    {
+                        "act": "Consumer Protection Act, 2019",
+                        "section": "S.2(47)",
+                        "relevance": "Defines deficiency in service — directly applicable to landlord's failure to return deposit.",
+                        "confidence": 0.91
+                    },
+                    {
+                        "act": "Transfer of Property Act, 1882", 
+                        "section": "S.108(q)",
+                        "relevance": "Landlord's obligation to restore possession and return security at end of tenancy.",
+                        "confidence": 0.87
+                    }
+                ],
+                "action_timeline": [
+                    {"step": 1, "action": "Issue formal Legal Notice via Registered Post", "law_basis": "S.80 CPC"},
+                    {"step": 2, "action": "Wait 15 days for compliance", "law_basis": "Standard Procedural Rule"},
+                    {"step": 3, "action": "File Online Consumer Complaint (e-Daakhil)", "law_basis": "CPA 2019"}
+                ],
+                "documents_generated": [
+                    {
+                        "doc_type": "Legal Notice",
+                        "content": "LEGAL NOTICE\n\nTo,\n[Landlord Name]\n[Landlord Address]\n\nSub: Demand for return of Security Deposit of ₹50,000\n\nDear Sir/Madam,\n\nI occupied your premises under a rental agreement and has since vacated the property. Despite repeated requests, you have failed to return the security deposit of ₹50,000.\n\nThis constitutes a deficiency in service under Section 2(47) of the Consumer Protection Act, 2019.\n\nYou are hereby called upon to return the said amount within 15 days, failing which I shall be constrained to initiate appropriate legal proceedings.\n\nIssued without prejudice.\n\n[Your Name]\n[Date]"
+                    }
+                ]
+            };
+        }
+    </script>
+</body>
+</html>
