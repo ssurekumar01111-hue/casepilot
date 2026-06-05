@@ -17,7 +17,7 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 mongo_client = MongoClient(MONGODB_URI)
 db = mongo_client[MONGODB_DB]
 cases_col = db["cases"]
-docs_col = db["generated_documents"]
+docs_col = db["documents"]
 genai_client = genai.Client(api_key=GOOGLE_API_KEY)
 
 LEGAL_NOTICE_PROMPT = """You are a senior Indian advocate drafting a formal legal notice.

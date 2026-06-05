@@ -142,6 +142,83 @@ def get_document(case_id):
     doc["generated_at"] = str(doc.get("generated_at",""))
     return jsonify(doc)
 
+@app.route('/case/<case_id>', methods=['GET'])
+def get_case(case_id):
+    """Retrieve a previously saved case by ID."""
+    try:
+        from pymongo import MongoClient
+        import os
+        client = MongoClient(os.getenv("MONGODB_URI"))
+        db = client[os.getenv("MONGODB_DB", "casepilot")]
+        
+        # Find case
+        case = db["cases"].find_one({"case_id": case_id})
+        if not case:
+            return jsonify({"error": f"Case {case_id} not found"}), 404
+        
+        # Remove MongoDB _id field
+        case.pop("_id", None)
+        
+        # Also fetch associated evidence documents
+        evidence_docs = list(db["evidence"].find(
+            {"case_id": case_id},
+            {"embedding": 0, "_id": 0}  # exclude embedding vector from response
+        ))
+        
+        # Fetch generated documents
+        # Note: documents are currently saved in 'generated_documents' via Drafting Agent logic in app.py Step 6
+        # but the prompt mentions db['documents']. I will check both or stick to what is in generated_documents.
+        # Actually, in Step 6 of Drafting Agent generated docs are saved to 'generated_documents'.
+        documents = list(db["generated_documents"].find(
+            {"case_id": case_id},
+            {"_id": 0}
+        ))
+        
+        return jsonify({
+            **case,
+            "evidence_processed": [
+                {
+                    "filename": d["filename"],
+                    "doc_type": d.get("doc_type", "other"),
+                    "stored_in_atlas": True
+                }
+                for d in evidence_docs
+            ],
+            "documents_generated": documents,
+            "resumed": True
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/cases/recent', methods=['GET'])
+def get_recent_cases():
+    """Return the 10 most recent cases for the resume panel."""
+    try:
+        from pymongo import MongoClient
+        import os
+        client = MongoClient(os.getenv("MONGODB_URI"))
+        db = client[os.getenv("MONGODB_DB", "casepilot")]
+        
+        cases = list(db["cases"].find(
+            {},
+            {
+                "_id": 0,
+                "case_id": 1,
+                "dispute_type": 1,
+                "status": 1,
+                "summary": 1,
+                "justice_score": 1,
+                "created_at": 1,
+                "updated_at": 1
+            }
+        ).sort("updated_at", -1).limit(10))
+        
+        return jsonify({"cases": cases, "total": len(cases)})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
