@@ -39,65 +39,37 @@ Describe your legal problem in plain language. CasePilot's 7 AI agents investiga
 ---
 
 ## Architecture
-┌─────────────────────────────────────────────────────────────────┐
-│                         CASEPILOT                                │
-│                                                                  │
-│  User Input + Document Upload                                    │
-│        │                                                         │
-│        ▼                                                         │
-│  ┌─────────────────────┐                                         │
-│  │  AGENT 1            │  Intake Agent                           │
-│  │  Intake + Classify  │  → Classifies dispute type             │
-│  │                     │  → Identifies jurisdiction             │
-│  └──────────┬──────────┘  → Opens/resumes case in MongoDB       │
-│             │                                                    │
-│             ▼                                                    │
-│  ┌─────────────────────┐                                         │
-│  │  AGENT 2            │  Law Research Agent (MCP-powered)       │
-│  │  Law Retrieval      │  → MongoDB Atlas Vector Search         │
-│  │                     │  → 3,310 sections across 11 acts       │
-│  └──────────┬──────────┘  → Identifies specific violations      │
-│             │                                                    │
-│             ▼                                                    │
-│  ┌─────────────────────┐                                         │
-│  │  AGENT 3            │  Evidence Agent                         │
-│  │  Evidence Analysis  │  → Processes uploaded documents        │
-│  │                     │  → Extracts dates, amounts, parties    │
-│  └──────────┬──────────┘  → Outputs Justice Score              │
-│             │                                                    │
-│             ▼                                                    │
-│  ┌─────────────────────┐                                         │
-│  │  AGENT 4            │  Strategy Agent                         │
-│  │  Legal Strategy     │  → Determines optimal legal path       │
-│  │                     │  → notice → forum → court              │
-│  └──────────┬──────────┘  → Weighs cost, time, effort          │
-│             │                                                    │
-│             ▼                                                    │
-│  ┌─────────────────────┐                                         │
-│  │  AGENT 5            │  Drafting Agent                         │
-│  │  Document Generator │  → Legal notice, RTI, complaint        │
-│  │  + Citation Pass    │  → Pre-filled with case facts          │
-│  └──────────┬──────────┘  → 6 document types across 5 categories│
-│             │                                                    │
-│             ▼                                                    │
-│  ┌─────────────────────┐                                         │
-│  │  AGENT 6            │  Citation Agent                         │
-│  │  Citation Pass      │  → Attaches statute references         │
-│  │                     │  → Atlas cosine similarity as          │
-│  └──────────┬──────────┘    confidence score (no hallucination) │
-│             │                                                    │
-│             ▼                                                    │
-│  ┌─────────────────────┐                                         │
-│  │  AGENT 7            │  Memory Agent (MCP-powered)             │
-│  │  Case Persistence   │  → Saves case to MongoDB via MCP       │
-│  │                     │  → Resume by Case ID anytime           │
-│  └──────────┴──────────┘  → Tracks action timeline             │
-│                                                                  │
-│  ─────────────────────────────────────────────────────          │
-│  MongoDB Atlas — Operational + Vector (Law) + Vector (Evidence) │
-│  MongoDB MCP Server — Agent-native database access              │
-│  ─────────────────────────────────────────────────────          │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A([User Input + Document Upload]) --> B
+
+    B[🔍 Intake Agent\nClassifies dispute type\nIdentifies jurisdiction] --> C
+    
+    C[⚖️ Law Research Agent — MCP\nMongoDB Atlas Vector Search\n3310 sections across 11 Indian acts] --> D
+    
+    D[📋 Evidence Agent\nProcesses uploaded documents\nOutputs Justice Score] --> E
+    
+    E[🗺️ Strategy Agent\nMaps optimal legal path\nNotice → Forum → Court] --> F
+    
+    F[📝 Drafting Agent\n6 document types across 5 categories\nPre-filled with extracted case facts] --> G
+    
+    G[✅ Citation Agent\nAttaches statute references\nAtlas cosine similarity as confidence score] --> H
+    
+    H[💾 Memory Agent — MCP\nSaves case to MongoDB Atlas\nResume by Case ID anytime]
+
+    H --> I[(MongoDB Atlas\nOperational + Vector Law + Vector Evidence)]
+    C --> I
+    
+    style A fill:#c9a84c,color:#000,stroke:#c9a84c
+    style I fill:#13aa52,color:#fff,stroke:#13aa52
+    style B fill:#1a1f2e,color:#fff,stroke:#c9a84c
+    style C fill:#1a1f2e,color:#fff,stroke:#c9a84c
+    style D fill:#1a1f2e,color:#fff,stroke:#c9a84c
+    style E fill:#1a1f2e,color:#fff,stroke:#c9a84c
+    style F fill:#1a1f2e,color:#fff,stroke:#c9a84c
+    style G fill:#1a1f2e,color:#fff,stroke:#c9a84c
+    style H fill:#1a1f2e,color:#fff,stroke:#c9a84c
+```
 
 ---
 
