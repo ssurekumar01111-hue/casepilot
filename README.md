@@ -6,8 +6,19 @@
 [![MongoDB Atlas](https://img.shields.io/badge/MongoDB-Atlas%20Vector%20Search-green)](https://mongodb.com)
 [![Google Cloud](https://img.shields.io/badge/Google%20Cloud-Cloud%20Run-blue)](https://cloud.google.com)
 [![Gemini](https://img.shields.io/badge/Gemini-3.1%20Flash%20Lite-orange)](https://deepmind.google/gemini)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 Built for the **Google Cloud Rapid Agent Hackathon — MongoDB Track**
+
+---
+
+## Demo
+
+[![CasePilot Demo Video](https://img.youtube.com/vi/s9TJTEpafWk/maxresdefault.jpg)](https://youtu.be/s9TJTEpafWk)
+
+> Click to watch the full demo — 7 agents live, Justice Score, multi-document generation, and Resume Case feature.
+
+🌐 **Live:** https://casepilot-34309631370.us-central1.run.app
 
 ---
 
@@ -23,19 +34,84 @@ When a landlord steals a deposit, when an employer withholds wages, when a gover
 
 ## What It Does
 
-Describe your legal problem in plain language. CasePilot's 7 AI agents investigate your case, search 3,310 sections across 11 Indian laws, score your evidence, map your legal path, and generate a ready-to-send legal notice — in minutes, for free.
+Describe your legal problem in plain language. CasePilot's 7 AI agents investigate your case, search 3,310 sections across 11 Indian laws, score your evidence, map your legal path, and generate court-ready legal documents — in minutes, for free.
 
-### The 7-Agent Pipeline
+---
+
+## Architecture
+┌─────────────────────────────────────────────────────────────────┐
+│                         CASEPILOT                                │
+│                                                                  │
+│  User Input + Document Upload                                    │
+│        │                                                         │
+│        ▼                                                         │
+│  ┌─────────────────────┐                                         │
+│  │  AGENT 1            │  Intake Agent                           │
+│  │  Intake + Classify  │  → Classifies dispute type             │
+│  │                     │  → Identifies jurisdiction             │
+│  └──────────┬──────────┘  → Opens/resumes case in MongoDB       │
+│             │                                                    │
+│             ▼                                                    │
+│  ┌─────────────────────┐                                         │
+│  │  AGENT 2            │  Law Research Agent (MCP-powered)       │
+│  │  Law Retrieval      │  → MongoDB Atlas Vector Search         │
+│  │                     │  → 3,310 sections across 11 acts       │
+│  └──────────┬──────────┘  → Identifies specific violations      │
+│             │                                                    │
+│             ▼                                                    │
+│  ┌─────────────────────┐                                         │
+│  │  AGENT 3            │  Evidence Agent                         │
+│  │  Evidence Analysis  │  → Processes uploaded documents        │
+│  │                     │  → Extracts dates, amounts, parties    │
+│  └──────────┬──────────┘  → Outputs Justice Score              │
+│             │                                                    │
+│             ▼                                                    │
+│  ┌─────────────────────┐                                         │
+│  │  AGENT 4            │  Strategy Agent                         │
+│  │  Legal Strategy     │  → Determines optimal legal path       │
+│  │                     │  → notice → forum → court              │
+│  └──────────┬──────────┘  → Weighs cost, time, effort          │
+│             │                                                    │
+│             ▼                                                    │
+│  ┌─────────────────────┐                                         │
+│  │  AGENT 5            │  Drafting Agent                         │
+│  │  Document Generator │  → Legal notice, RTI, complaint        │
+│  │  + Citation Pass    │  → Pre-filled with case facts          │
+│  └──────────┬──────────┘  → 6 document types across 5 categories│
+│             │                                                    │
+│             ▼                                                    │
+│  ┌─────────────────────┐                                         │
+│  │  AGENT 6            │  Citation Agent                         │
+│  │  Citation Pass      │  → Attaches statute references         │
+│  │                     │  → Atlas cosine similarity as          │
+│  └──────────┬──────────┘    confidence score (no hallucination) │
+│             │                                                    │
+│             ▼                                                    │
+│  ┌─────────────────────┐                                         │
+│  │  AGENT 7            │  Memory Agent (MCP-powered)             │
+│  │  Case Persistence   │  → Saves case to MongoDB via MCP       │
+│  │                     │  → Resume by Case ID anytime           │
+│  └──────────┴──────────┘  → Tracks action timeline             │
+│                                                                  │
+│  ─────────────────────────────────────────────────────          │
+│  MongoDB Atlas — Operational + Vector (Law) + Vector (Evidence) │
+│  MongoDB MCP Server — Agent-native database access              │
+│  ─────────────────────────────────────────────────────          │
+└─────────────────────────────────────────────────────────────────┘
+
+---
+
+## The 7-Agent Pipeline
 
 | Agent | Role |
 |---|---|
 | 🔍 Intake Agent | Classifies dispute type, identifies applicable jurisdiction |
-| ⚖️ Law Research Agent | Semantic search across 3,310 law chunks via MongoDB Atlas Vector Search |
+| ⚖️ Law Research Agent | Semantic search across 3,310 law chunks via MongoDB Atlas Vector Search (MCP) |
 | 📋 Evidence Agent | Analyses uploaded documents, outputs Justice Score |
 | 🗺️ Strategy Agent | Maps optimal legal path (notice → forum → court) |
-| 📝 Drafting Agent | Generates ready-to-send legal notice pre-filled with case facts |
+| 📝 Drafting Agent | Generates 6 document types across 5 dispute categories |
 | ✅ Citation Agent | Attaches statute references with Atlas confidence scores |
-| 💾 Memory Agent | Persists case record, tracks action timeline in MongoDB |
+| 💾 Memory Agent | Persists case record via MongoDB MCP Server, enables Resume Case |
 
 ---
 
@@ -51,6 +127,26 @@ Every investigation produces a Justice Score — a deterministic case strength m
   "verdict": "Strong case — 2 critical gaps. Address before filing."
 }
 ```
+
+---
+
+## Document Generation
+
+6 document types generated based on dispute category:
+
+| Dispute Type | Documents Generated |
+|---|---|
+| Landlord / Deposit | Legal Notice + Consumer Complaint + Affidavit |
+| RTI Filing | RTI First Appeal + RTI Second Appeal |
+| Workplace / Salary | Legal Notice + Police Complaint + Affidavit |
+| Consumer | Consumer Complaint + Legal Notice |
+| Cyber Crime | Police Complaint + Legal Notice |
+
+---
+
+## Resume Case Feature
+
+Every case is saved to MongoDB Atlas with a unique Case ID (e.g. `CPA-20260605081047`). Users can return anytime, paste their Case ID, and resume exactly where they left off — full history, documents, and citations retrieved instantly.
 
 ---
 
@@ -83,6 +179,8 @@ Every investigation produces a Justice Score — a deterministic case strength m
 
 Vector index: `law_vector_index` — cosine similarity, 3,072 dimensions (gemini-embedding-2)
 
+**MongoDB MCP Server** powers the Law Research Agent and Memory Agent — giving agents native database access without raw queries.
+
 ---
 
 ## Tech Stack
@@ -91,8 +189,17 @@ Vector index: `law_vector_index` — cosine similarity, 3,072 dimensions (gemini
 - **LLM:** Gemini 3.1 Flash-Lite
 - **Embeddings:** gemini-embedding-2 (3,072 dimensions)
 - **Database:** MongoDB Atlas (Operational + Vector Search)
+- **MCP:** MongoDB MCP Server (npx mongodb-mcp-server)
 - **Deployment:** Google Cloud Run
 - **Frontend:** Vanilla HTML/CSS/JS (dark luxury theme)
+
+---
+
+## API
+POST /case/new          → Analyse a new case (JSON or multipart with files)
+GET  /case/{case_id}    → Resume a previous case
+GET  /cases/recent      → List 10 most recent cases
+GET  /health            → Health check
 
 ---
 
@@ -106,7 +213,31 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
 # Fill in MONGODB_URI and GOOGLE_API_KEY in .env
-python main.py  # connection test
-python scripts/ingest_corpus.py  # ingest law corpus
-python app.py  # start API server
+python main.py                    # connection test
+python scripts/ingest_corpus.py   # ingest law corpus into Atlas
+python app.py                     # start API server
 ```
+
+---
+
+## What's Next
+
+- WhatsApp Bot — voice message case filing in Hindi & English
+- Regional Languages — Hindi, Tamil, Telugu, Bengali
+- eCourts Integration — direct e-filing with India's eCourts portal
+- Aadhaar Verification — verified profiles for stronger legal standing
+- Lawyer Marketplace — connect to verified advocates
+- Offline Mode — compressed corpus for rural low-connectivity areas
+- MSME Platform — multi-tenant legal support for small businesses
+
+---
+
+## Disclaimer
+
+CasePilot provides legal information only, not legal advice. Always consult a qualified advocate for your specific situation.
+
+---
+
+## License
+
+Apache 2.0 — see [LICENSE](LICENSE)
